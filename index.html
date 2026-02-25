@@ -405,7 +405,10 @@
     </div>
 
     <div id="viewfinder">
-      <video id="video" autoplay muted playsinline></video>
+      <!-- iOS Safari: webkit-playsinline 필수 -->
+      <video id="video" autoplay muted playsinline webkit-playsinline></video>
+      <!-- iOS detect(video) 불안정 → 이 canvas에 프레임을 그려서 detect(canvas) 사용 -->
+      <canvas id="frame-canvas" style="display:none;"></canvas>
       <canvas id="overlay"></canvas>
       <div class="scan-line" id="scan-line"></div>
     </div>
@@ -589,7 +592,8 @@
 
   async function loadCameras() {
     try {
-      await navigator.mediaDevices.getUserMedia({ video: true });
+      // iOS: facingMode만 지정해서 권한 요청 (deviceId exact는 iOS에서 실패하는 경우 있음)
+      await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       const devices = await navigator.mediaDevices.enumerateDevices();
       const cams = devices.filter(d => d.kind === 'videoinput');
       $('cam-select').innerHTML = cams.length
@@ -610,21 +614,27 @@
 
     const deviceId = $('cam-select').value;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          deviceId: deviceId ? { exact: deviceId } : undefined,
-          width: { ideal: 1280 }, height: { ideal: 720 },
-          facingMode: 'environment',
-        }
-      });
+      // iOS: deviceId + facingMode 동시 사용 시 충돌 가능 → deviceId 있을 때 facingMode 생략
+      const videoConstraints = deviceId
+        ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        : { facingMode: 'environment',    width: { ideal: 1280 }, height: { ideal: 720 } };
+
+      stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
 
       const video = $('video');
       video.srcObject = stream;
+
+      // iOS: play() 전에 loadedmetadata 대기
+      await new Promise(resolve => {
+        if (video.readyState >= 1) { resolve(); return; }
+        video.addEventListener('loadedmetadata', resolve, { once: true });
+      });
+
       await video.play();
 
       // 오버레이 캔버스 크기 동기화
-      video.addEventListener('loadedmetadata', syncCanvas);
       syncCanvas();
+      video.addEventListener('resize', syncCanvas);
 
       $('dot').classList.add('active');
       $('scan-line').style.display = 'block';
@@ -642,7 +652,7 @@
   $('btn-stop').addEventListener('click', stopScan);
 
   function stopScan() {
-    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    if (rafId) { clearTimeout(rafId); cancelAnimationFrame(rafId); rafId = null; }
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
     $('video').srcObject = null;
     clearOverlay();
@@ -656,10 +666,14 @@
   }
 
   function syncCanvas() {
-    const v = $('video'), c = $('overlay');
-    c.width  = v.videoWidth  || v.clientWidth;
-    c.height = v.videoHeight || v.clientHeight;
-    c.style.width  = '100%';
+    const v = $('video');
+    const c = $('overlay');
+    const f = $('frame-canvas');
+    const w = v.videoWidth  || v.clientWidth;
+    const h = v.videoHeight || v.clientHeight;
+    c.width = f.width = w;
+    c.height = f.height = h;
+    c.style.width = '100%';
     c.style.height = '100%';
   }
 
@@ -670,12 +684,21 @@
     document.querySelectorAll('.barcode-label').forEach(el => el.remove());
   }
 
+  // iOS에서 detect(video) 직접 호출이 불안정하므로
+  // 매 프레임을 frame-canvas에 그린 뒤 detect(canvas) 사용
   async function scanLoop() {
-    const video = $('video');
+    const video  = $('video');
+    const fcanvas = $('frame-canvas');
+
     if (!stream || video.readyState < 2) { rafId = requestAnimationFrame(scanLoop); return; }
 
+    // 비디오 프레임 → canvas 복사
+    if (fcanvas.width > 0 && fcanvas.height > 0) {
+      fcanvas.getContext('2d').drawImage(video, 0, 0, fcanvas.width, fcanvas.height);
+    }
+
     try {
-      const barcodes = await detector.detect(video);
+      const barcodes = await detector.detect(fcanvas);
       clearOverlay();
 
       if (barcodes.length > 0) {
@@ -730,7 +753,8 @@
       // detect() 실패는 조용히 무시 (프레임 처리 중 일시적 오류)
     }
 
-    rafId = requestAnimationFrame(scanLoop);
+    // ~15fps로 throttle (iOS 배터리 절약 + detect 큐 쌓임 방지)
+    rafId = setTimeout(() => requestAnimationFrame(scanLoop), 66);
   }
 
   function drawBoundingBox(bc) {
