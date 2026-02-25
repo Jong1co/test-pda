@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Barcode Detection API Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0a0f1e;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 24px 16px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    header h1 { font-size: 1.8rem; font-weight: 700; color: #fff; }
+    header p { margin-top: 6px; color: #94a3b8; font-size: 0.9rem; }
+
+    .badges { margin-top: 10px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-family: monospace;
+      border: 1px solid;
+    }
+
+    .badge-blue  { background: #0f2040; border-color: #1e40af; color: #7dd3fc; }
+    .badge-green { background: #052e16; border-color: #166534; color: #4ade80; }
+    .badge-red   { background: #2d0a0a; border-color: #7f1d1d; color: #fca5a5; }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .tab-btn {
+      background: #111827;
+      border: 1px solid #1f2937;
+      color: #6b7280;
+      padding: 8px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+
+    .tab-btn:hover { border-color: #6366f1; color: #e2e8f0; }
+    .tab-btn.active { background: #312e81; border-color: #6366f1; color: #fff; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .card {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 700px;
+      margin: 0 auto 20px;
+    }
+
+    .card h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    label { display: block; font-size: 0.8rem; color: #6b7280; margin-bottom: 6px; }
+
+    select {
+      width: 100%;
+      background: #0a0f1e;
+      border: 1px solid #1f2937;
+      color: #e2e8f0;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      margin-bottom: 12px;
+      outline: none;
+    }
+
+    select:focus { border-color: #6366f1; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 18px;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .btn-primary { background: #4f46e5; color: #fff; }
+    .btn-primary:hover { background: #4338ca; }
+    .btn-danger { background: #dc2626; color: #fff; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+    /* 뷰파인더 */
+    #viewfinder {
+      position: relative;
+      width: 100%;
+      background: #000;
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 12px 0;
+    }
+
+    #video {
+      width: 100%;
+      display: block;
+      max-height: 360px;
+      object-fit: cover;
+    }
+
+    #overlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+    }
+
+    /* 스캔 라인 */
+    .scan-line {
+      position: absolute;
+      left: 8%; width: 84%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #818cf8, transparent);
+      display: none;
+      pointer-events: none;
+      animation: sweep 2s ease-in-out infinite;
+    }
+
+    @keyframes sweep {
+      0%   { top: 15%; opacity: 0.9; }
+      50%  { top: 80%; opacity: 0.9; }
+      100% { top: 15%; opacity: 0.9; }
+    }
+
+    /* 상태 표시 */
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: #6b7280;
+      margin-bottom: 10px;
+    }
+
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #374151;
+      flex-shrink: 0;
+    }
+
+    .dot.active {
+      background: #4ade80;
+      box-shadow: 0 0 6px #4ade80;
+      animation: blink 1.5s infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* 결과 박스 */
+    .result-box {
+      background: #0a0f1e;
+      border: 1px solid #312e81;
+      border-radius: 8px;
+      padding: 14px;
+      margin-top: 16px;
+    }
+
+    .result-label {
+      font-size: 0.7rem;
+      color: #818cf8;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+    }
+
+    .result-value {
+      font-family: monospace;
+      font-size: 1rem;
+      color: #4ade80;
+      word-break: break-all;
+    }
+
+    .result-value.empty { color: #374151; font-style: italic; font-size: 0.875rem; }
+
+    .result-meta {
+      display: flex;
+      gap: 14px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .result-meta span {
+      font-size: 0.72rem;
+      color: #4b5563;
+    }
+
+    .result-meta strong { color: #9ca3af; }
+
+    /* 바운딩 박스 레이블 */
+    .barcode-label {
+      position: absolute;
+      background: rgba(99,102,241,0.85);
+      color: #fff;
+      font-size: 0.65rem;
+      font-family: monospace;
+      padding: 2px 6px;
+      border-radius: 4px;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    /* 기록 */
+    hr { border: none; border-top: 1px solid #1f2937; margin: 16px 0; }
+
+    .count-chip {
+      background: #312e81;
+      color: #a5b4fc;
+      font-size: 0.65rem;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-weight: 700;
+    }
+
+    .history-list {
+      list-style: none;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    .history-list li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 5px;
+      font-size: 0.8rem;
+    }
+
+    .history-list li:nth-child(odd) { background: #0a0f1e; }
+    .hi-val  { font-family: monospace; color: #4ade80; flex: 1; word-break: break-all; }
+    .hi-fmt  { color: #818cf8; font-size: 0.7rem; white-space: nowrap; }
+    .hi-time { color: #374151; font-size: 0.7rem; white-space: nowrap; }
+
+    .copy-btn {
+      background: none;
+      border: 1px solid #1f2937;
+      color: #6b7280;
+      font-size: 0.68rem;
+      padding: 2px 7px;
+      border-radius: 4px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .copy-btn:hover { border-color: #6366f1; color: #e2e8f0; }
+
+    /* 이미지 탭 */
+    .drop-zone {
+      border: 2px dashed #1f2937;
+      border-radius: 10px;
+      padding: 32px;
+      text-align: center;
+      cursor: pointer;
+      color: #4b5563;
+      transition: all 0.2s;
+      margin-bottom: 12px;
+    }
+
+    .drop-zone:hover, .drop-zone.over {
+      border-color: #6366f1;
+      background: #0f172a;
+      color: #9ca3af;
+    }
+
+    .drop-zone .icon { font-size: 2rem; margin-bottom: 8px; }
+    .drop-zone p { font-size: 0.875rem; }
+    .drop-zone small { font-size: 0.75rem; color: #374151; }
+
+    #img-preview {
+      max-width: 100%;
+      max-height: 280px;
+      border-radius: 8px;
+      display: none;
+      margin: 10px auto;
+    }
+
+    /* 지원 포맷 칩 */
+    .format-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .format-chip {
+      background: #0a0f1e;
+      border: 1px solid #1f2937;
+      color: #6b7280;
+      font-size: 0.72rem;
+      font-family: monospace;
+      padding: 3px 9px;
+      border-radius: 5px;
+    }
+
+    .format-chip.supported { border-color: #166534; color: #4ade80; background: #052e16; }
+
+    /* 브라우저 미지원 배너 */
+    #unsupported-banner {
+      display: none;
+      background: #2d0a0a;
+      border: 1px solid #7f1d1d;
+      border-radius: 10px;
+      padding: 16px 20px;
+      max-width: 700px;
+      margin: 0 auto 20px;
+      font-size: 0.875rem;
+      color: #fca5a5;
+    }
+
+    /* 연속 확인 카운터 표시 */
+    .confirm-bar {
+      height: 3px;
+      background: #1f2937;
+      border-radius: 2px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+
+    .confirm-fill {
+      height: 100%;
+      background: #6366f1;
+      border-radius: 2px;
+      transition: width 0.1s;
+      width: 0%;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Barcode Detection API</h1>
+  <p>브라우저 내장 네이티브 바코드 인식 API 데모</p>
+  <div class="badges">
+    <span class="badge badge-blue">Web API</span>
+    <span class="badge badge-blue" id="badge-api">확인 중...</span>
+    <span class="badge badge-green" id="badge-formats" style="display:none"></span>
+  </div>
+</header>
+
+<div id="unsupported-banner">
+  ⚠️ 이 브라우저는 <strong>Barcode Detection API</strong>를 지원하지 않습니다.<br/>
+  Chrome 83+ (Android/macOS) 또는 Safari 17.4+ 에서 사용 가능합니다.
+  현재 브라우저: <strong id="ua-browser"></strong>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="webcam">웹캠 스캔</button>
+  <button class="tab-btn" data-tab="image">이미지 스캔</button>
+  <button class="tab-btn" data-tab="info">API 정보</button>
+</div>
+
+<!-- ===== 웹캠 탭 ===== -->
+<div id="tab-webcam" class="tab-panel active">
+  <div class="card">
+    <h2>웹캠 실시간 스캔</h2>
+
+    <label for="cam-select">카메라 선택</label>
+    <select id="cam-select"><option value="">-- 카메라 목록 로드 중 --</option></select>
+
+    <div class="status-row">
+      <span class="dot" id="dot"></span>
+      <span id="status-text">대기 중</span>
+    </div>
+
+    <div id="viewfinder">
+      <video id="video" autoplay muted playsinline></video>
+      <canvas id="overlay"></canvas>
+      <div class="scan-line" id="scan-line"></div>
+    </div>
+
+    <div class="confirm-bar"><div class="confirm-fill" id="confirm-fill"></div></div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btn-start">▶ 스캔 시작</button>
+      <button class="btn btn-danger" id="btn-stop" disabled>■ 정지</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>스캔 결과</h2>
+    <div class="result-box">
+      <div class="result-label">디코딩 결과</div>
+      <div class="result-value empty" id="webcam-result">아직 스캔된 코드가 없습니다.</div>
+      <div class="result-meta" id="webcam-meta" style="display:none">
+        <span>포맷: <strong id="webcam-fmt">-</strong></span>
+        <span>시각: <strong id="webcam-time">-</strong></span>
+      </div>
+    </div>
+
+    <hr />
+    <h2>스캔 기록 <span class="count-chip" id="hist-count">0</span></h2>
+    <ul class="history-list" id="hist-list">
+      <li style="color:#374151; font-size:0.8rem; padding:8px;">기록이 없습니다.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ===== 이미지 탭 ===== -->
+<div id="tab-image" class="tab-panel">
+  <div class="card">
+    <h2>이미지에서 스캔</h2>
+    <div class="drop-zone" id="drop-zone">
+      <div class="icon">🖼️</div>
+      <p>이미지를 드래그하거나 클릭해서 선택</p>
+      <small>PNG · JPG · WebP · GIF 지원</small>
+    </div>
+    <input type="file" id="file-input" accept="image/*" style="display:none" />
+    <img id="img-preview" alt="미리보기" />
+
+    <div class="result-box">
+      <div class="result-label">디코딩 결과</div>
+      <div class="result-value empty" id="img-result">이미지를 업로드하면 결과가 표시됩니다.</div>
+      <div class="result-meta" id="img-meta" style="display:none">
+        <span>포맷: <strong id="img-fmt">-</strong></span>
+        <span>감지 수: <strong id="img-count">-</strong></span>
+        <span>시각: <strong id="img-time">-</strong></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== API 정보 탭 ===== -->
+<div id="tab-info" class="tab-panel">
+  <div class="card">
+    <h2>브라우저 지원 포맷</h2>
+    <p style="font-size:0.8rem; color:#6b7280; margin-bottom:12px;">
+      <code style="background:#0a0f1e; padding:1px 5px; border-radius:3px; color:#a5b4fc;">BarcodeDetector.getSupportedFormats()</code> 결과
+    </p>
+    <div class="format-chips" id="format-chips">
+      <span style="color:#4b5563; font-size:0.8rem;">로드 중...</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>API 개요</h2>
+    <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
+      <thead>
+        <tr style="border-bottom:1px solid #1f2937;">
+          <th style="text-align:left; padding:6px 8px; color:#6b7280; font-weight:600;">항목</th>
+          <th style="text-align:left; padding:6px 8px; color:#6b7280; font-weight:600;">내용</th>
+        </tr>
+      </thead>
+      <tbody id="api-info-body">
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const now = () => new Date().toLocaleTimeString('ko-KR');
+  const escHtml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  const ALL_FORMATS = [
+    'aztec','code_128','code_39','code_93','codabar',
+    'data_matrix','ean_13','ean_8','itf','pdf417',
+    'qr_code','upc_a','upc_e','unknown'
+  ];
+
+  // ── 브라우저 지원 체크 ──────────────────────────────────
+  const supported = 'BarcodeDetector' in window;
+  let detector = null;
+  let supportedFormats = [];
+
+  if (!supported) {
+    $('badge-api').textContent = '미지원';
+    $('badge-api').className = 'badge badge-red';
+    $('unsupported-banner').style.display = 'block';
+    $('ua-browser').textContent = navigator.userAgent;
+    document.querySelectorAll('.btn-primary').forEach(b => b.disabled = true);
+  } else {
+    $('badge-api').textContent = '지원됨';
+    $('badge-api').className = 'badge badge-green';
+
+    BarcodeDetector.getSupportedFormats().then(formats => {
+      supportedFormats = formats;
+      detector = new BarcodeDetector({ formats });
+
+      $('badge-formats').style.display = 'inline-block';
+      $('badge-formats').textContent = `${formats.length}개 포맷`;
+
+      // API 정보 탭
+      $('format-chips').innerHTML = ALL_FORMATS.map(f =>
+        `<span class="format-chip ${formats.includes(f) ? 'supported' : ''}">${f}</span>`
+      ).join('');
+
+      $('api-info-body').innerHTML = [
+        ['API 이름', 'BarcodeDetector (Shape Detection API)'],
+        ['보안 컨텍스트', 'HTTPS 또는 localhost 필요'],
+        ['지원 브라우저', 'Chrome 83+ (Android/macOS), Safari 17.4+'],
+        ['지원 입력', 'HTMLImageElement, HTMLVideoElement, HTMLCanvasElement, ImageBitmap, Blob, ImageData'],
+        ['지원 포맷 수', `${formats.length}개`],
+        ['지원 포맷', formats.join(', ')],
+      ].map(([k, v]) => `
+        <tr style="border-bottom:1px solid #1f2937;">
+          <td style="padding:7px 8px; color:#6b7280; white-space:nowrap;">${k}</td>
+          <td style="padding:7px 8px; color:#e2e8f0; font-family:${k.includes('포맷') ? 'monospace' : 'inherit'}; font-size:0.78rem;">${v}</td>
+        </tr>
+      `).join('');
+    });
+  }
+
+  // ── 탭 전환 ─────────────────────────────────────────────
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.tab !== 'webcam') stopScan();
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      $('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // ── 히스토리 ─────────────────────────────────────────────
+  const history = [];
+
+  function addHistory(value, format) {
+    if (history.length && history[0].value === value) return;
+    history.unshift({ value, format, time: now() });
+    if (history.length > 30) history.pop();
+
+    const list = $('hist-list');
+    list.innerHTML = history.map(h => `
+      <li>
+        <span class="hi-val">${escHtml(h.value)}</span>
+        <span class="hi-fmt">${escHtml(h.format)}</span>
+        <span class="hi-time">${h.time}</span>
+        <button class="copy-btn" data-val="${escHtml(h.value)}">복사</button>
+      </li>
+    `).join('');
+    $('hist-count').textContent = history.length;
+
+    list.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', () => navigator.clipboard.writeText(btn.dataset.val));
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  웹캠 탭
+  // ══════════════════════════════════════════════════════════
+  let stream = null;
+  let rafId  = null;
+
+  // 오인식 방지: 동일 코드 N회 연속 확인
+  const CONFIRM_NEEDED = 3;
+  let pendingVal = '', pendingCnt = 0;
+
+  async function loadCameras() {
+    try {
+      await navigator.mediaDevices.getUserMedia({ video: true });
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d => d.kind === 'videoinput');
+      $('cam-select').innerHTML = cams.length
+        ? cams.map((c, i) => `<option value="${c.deviceId}">${escHtml(c.label || '카메라 ' + (i+1))}</option>`).join('')
+        : '<option value="">카메라 없음</option>';
+    } catch (e) {
+      $('cam-select').innerHTML = '<option value="">카메라 권한 거부</option>';
+    }
+  }
+
+  if (supported) loadCameras();
+
+  $('btn-start').addEventListener('click', async () => {
+    if (!detector) return;
+    $('btn-start').disabled = true;
+    $('btn-stop').disabled = false;
+    $('status-text').textContent = '카메라 시작 중...';
+
+    const deviceId = $('cam-select').value;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          deviceId: deviceId ? { exact: deviceId } : undefined,
+          width: { ideal: 1280 }, height: { ideal: 720 },
+          facingMode: 'environment',
+        }
+      });
+
+      const video = $('video');
+      video.srcObject = stream;
+      await video.play();
+
+      // 오버레이 캔버스 크기 동기화
+      video.addEventListener('loadedmetadata', syncCanvas);
+      syncCanvas();
+
+      $('dot').classList.add('active');
+      $('scan-line').style.display = 'block';
+      $('status-text').textContent = '스캔 중...';
+
+      pendingVal = ''; pendingCnt = 0;
+      scanLoop();
+    } catch (e) {
+      $('status-text').textContent = '오류: ' + e.message;
+      $('btn-start').disabled = false;
+      $('btn-stop').disabled = true;
+    }
+  });
+
+  $('btn-stop').addEventListener('click', stopScan);
+
+  function stopScan() {
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    $('video').srcObject = null;
+    clearOverlay();
+    $('dot').classList.remove('active');
+    $('scan-line').style.display = 'none';
+    $('status-text').textContent = '정지됨';
+    $('btn-start').disabled = false;
+    $('btn-stop').disabled = true;
+    $('confirm-fill').style.width = '0%';
+    pendingVal = ''; pendingCnt = 0;
+  }
+
+  function syncCanvas() {
+    const v = $('video'), c = $('overlay');
+    c.width  = v.videoWidth  || v.clientWidth;
+    c.height = v.videoHeight || v.clientHeight;
+    c.style.width  = '100%';
+    c.style.height = '100%';
+  }
+
+  function clearOverlay() {
+    const c = $('overlay');
+    c.getContext('2d').clearRect(0, 0, c.width, c.height);
+    // 레이블 제거
+    document.querySelectorAll('.barcode-label').forEach(el => el.remove());
+  }
+
+  async function scanLoop() {
+    const video = $('video');
+    if (!stream || video.readyState < 2) { rafId = requestAnimationFrame(scanLoop); return; }
+
+    try {
+      const barcodes = await detector.detect(video);
+      clearOverlay();
+
+      if (barcodes.length > 0) {
+        const bc = barcodes[0];
+        drawBoundingBox(bc);
+
+        const val = bc.rawValue;
+
+        if (val === pendingVal) {
+          pendingCnt++;
+        } else {
+          pendingVal = val;
+          pendingCnt = 1;
+        }
+
+        // 진행도 표시
+        $('confirm-fill').style.width = Math.min(100, pendingCnt / CONFIRM_NEEDED * 100) + '%';
+        $('status-text').textContent = `감지 중... (${Math.min(pendingCnt, CONFIRM_NEEDED)}/${CONFIRM_NEEDED})`;
+
+        if (pendingCnt >= CONFIRM_NEEDED) {
+          const fmt = bc.format;
+          pendingVal = ''; pendingCnt = 0;
+          $('confirm-fill').style.width = '0%';
+
+          // 결과 표시
+          $('webcam-result').textContent = val;
+          $('webcam-result').classList.remove('empty');
+          $('webcam-result').style.color = '#4ade80';
+          $('webcam-meta').style.display = 'flex';
+          $('webcam-fmt').textContent  = fmt;
+          $('webcam-time').textContent = now();
+
+          addHistory(val, fmt);
+
+          // 특정 코드 알림
+          if (val === '8808739000108') alert('8808739000108 감지!');
+
+          $('status-text').textContent = '스캔 중...';
+        }
+      } else {
+        // 바코드 없으면 카운터 점진적 감소
+        if (pendingCnt > 0) {
+          pendingCnt = Math.max(0, pendingCnt - 1);
+          $('confirm-fill').style.width = Math.min(100, pendingCnt / CONFIRM_NEEDED * 100) + '%';
+        }
+        if (pendingCnt === 0) {
+          pendingVal = '';
+          $('status-text').textContent = '스캔 중...';
+        }
+      }
+    } catch (e) {
+      // detect() 실패는 조용히 무시 (프레임 처리 중 일시적 오류)
+    }
+
+    rafId = requestAnimationFrame(scanLoop);
+  }
+
+  function drawBoundingBox(bc) {
+    const video   = $('video');
+    const canvas  = $('overlay');
+    const ctx     = canvas.getContext('2d');
+    const scaleX  = canvas.width  / video.videoWidth;
+    const scaleY  = canvas.height / video.videoHeight;
+
+    const { x, y, width, height } = bc.boundingBox;
+    const sx = x * scaleX, sy = y * scaleY;
+    const sw = width * scaleX, sh = height * scaleY;
+
+    // 반투명 배경
+    ctx.fillStyle = 'rgba(99,102,241,0.12)';
+    ctx.fillRect(sx, sy, sw, sh);
+
+    // 테두리
+    ctx.strokeStyle = '#6366f1';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sx, sy, sw, sh);
+
+    // cornerPoints 연결선
+    if (bc.cornerPoints && bc.cornerPoints.length === 4) {
+      ctx.strokeStyle = '#818cf8';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      bc.cornerPoints.forEach((p, i) => {
+        i === 0
+          ? ctx.moveTo(p.x * scaleX, p.y * scaleY)
+          : ctx.lineTo(p.x * scaleX, p.y * scaleY);
+      });
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    // 포맷 레이블 (캔버스 위 절대 위치)
+    const vfRect = $('viewfinder').getBoundingClientRect();
+    const cRect  = canvas.getBoundingClientRect();
+    const labelX = cRect.left - vfRect.left + sx;
+    const labelY = cRect.top  - vfRect.top  + sy - 22;
+
+    const old = document.querySelector('.barcode-label');
+    if (old) old.remove();
+    const lbl = document.createElement('div');
+    lbl.className = 'barcode-label';
+    lbl.textContent = bc.format;
+    lbl.style.left = Math.max(0, labelX) + 'px';
+    lbl.style.top  = Math.max(0, labelY) + 'px';
+    $('viewfinder').appendChild(lbl);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  이미지 탭
+  // ══════════════════════════════════════════════════════════
+  async function scanImageFile(file) {
+    $('img-result').textContent = '인식 중...';
+    $('img-result').style.color = '#6b7280';
+    $('img-meta').style.display = 'none';
+
+    const bitmap = await createImageBitmap(file);
+
+    // 미리보기
+    const prev = $('img-preview');
+    prev.src = URL.createObjectURL(file);
+    prev.style.display = 'block';
+
+    try {
+      const barcodes = await detector.detect(bitmap);
+      bitmap.close();
+
+      if (barcodes.length > 0) {
+        // 모든 감지 결과를 줄바꿈으로 표시
+        const values = barcodes.map(b => b.rawValue).join('\n');
+        $('img-result').textContent = values;
+        $('img-result').classList.remove('empty');
+        $('img-result').style.color = '#4ade80';
+        $('img-meta').style.display = 'flex';
+        $('img-fmt').textContent   = barcodes.map(b => b.format).join(', ');
+        $('img-count').textContent = barcodes.length + '개';
+        $('img-time').textContent  = now();
+      } else {
+        $('img-result').textContent = '바코드를 찾을 수 없습니다.';
+        $('img-result').style.color = '#f87171';
+        $('img-result').classList.remove('empty');
+      }
+    } catch (e) {
+      $('img-result').textContent = '오류: ' + e.message;
+      $('img-result').style.color = '#f87171';
+    }
+  }
+
+  const dz = $('drop-zone');
+  dz.addEventListener('click', () => $('file-input').click());
+  $('file-input').addEventListener('change', e => { if (e.target.files[0]) scanImageFile(e.target.files[0]); });
+  dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) scanImageFile(f);
+  });
+</script>
+</body>
+</html>
